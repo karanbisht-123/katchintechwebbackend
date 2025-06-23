@@ -5,7 +5,7 @@ const { validateObjectId } = require("../utils/validators");
 const logger = require("../utils/logger");
 
 const createBlog = asyncHandler(async (req, res) => {
-    const { title, content, excerpt, tags, categories, status, meta } = req.body;
+    const { title, content, excerpt, tags, categories, status, meta, featuredImage } = req.body;
 
     const blog = new Blog({
         title,
@@ -16,20 +16,23 @@ const createBlog = asyncHandler(async (req, res) => {
         categories,
         status,
         meta,
+        featuredImage,
     });
 
     const createdBlog = await blog.save();
 
-    logger.info(`Blog created: ${createdBlog._id} by user: ${req.user._id}`);
+    const populatedBlog = await Blog.findById(createdBlog._id).populate('author', 'name email');
+
+    logger.info(`Blog created: ${populatedBlog._id} by user: ${req.user._id}`);
 
     res.status(201).json({
         success: true,
-        data: createdBlog,
+        data: populatedBlog,
     });
 });
 
 const getBlogs = asyncHandler(async (req, res) => {
-    const { page = 1, limit = 10, search, status } = req.query;
+    const { page = 1, limit = 10, search, status, category } = req.query;
 
     const query = {};
     if (search) {
@@ -41,6 +44,18 @@ const getBlogs = asyncHandler(async (req, res) => {
     }
     if (status && ["draft", "published", "archived"].includes(status)) {
         query.status = status;
+    }
+    if (category) {
+        const categoryQuery = validateObjectId(category)
+            ? { _id: category }
+            : { slug: category };
+        const categoryDoc = await Category.findOne(categoryQuery).lean();
+        if (categoryDoc) {
+            query.categories = categoryDoc._id;
+        } else {
+            res.status(404);
+            throw new Error("Category not found");
+        }
     }
 
     const [blogs, total] = await Promise.all([
@@ -67,7 +82,7 @@ const getBlogs = asyncHandler(async (req, res) => {
             pages: Math.ceil(total / limit),
         },
     });
-});
+});;
 
 const getBlog = asyncHandler(async (req, res) => {
     const { id } = req.params;
@@ -168,34 +183,46 @@ const deleteBlog = asyncHandler(async (req, res) => {
     });
 });
 
-const uploadFeaturedImage = asyncHandler(async (req, res) => {
-    if (req.user.role !== "admin") {
-        res.status(403);
-        throw new Error("Not authorized to upload images");
-    }
-
+const uploadFeaturedImageStream = asyncHandler(async (req, res) => {
     if (!req.file) {
         res.status(400);
-        throw new Error("No image file provided");
+        throw new Error("No file provided or incorrect field name. Expected 'file'.");
     }
 
-    const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: "blog-featured-images",
-        transformation: [
-            { width: 1200, height: 630, crop: "fill", quality: "auto" },
-            { fetch_format: "auto" },
-        ],
-    });
+    try {
+        const result = await new Promise((resolve, reject) => {
+            cloudinary.uploader.upload_stream(
+                {
+                    folder: "blog-featured-images",
+                    transformation: [
+                        { width: 1200, height: 630, crop: "fill", quality: "auto" },
+                        { fetch_format: "auto" },
+                    ],
+                },
+                (error, result) => {
+                    if (error) {
+                        reject(error);
+                    } else {
+                        resolve(result);
+                    }
+                }
+            ).end(req.file.buffer);
+        });
 
-    logger.info(`Image uploaded for blog by admin: ${req.user._id}`);
+        logger.info(`Image uploaded for blog by admin: ${req.user?._id || 'unknown'}`);
 
-    res.json({
-        success: true,
-        data: {
-            url: result.secure_url,
-            publicId: result.public_id,
-        },
-    });
+        res.json({
+            success: true,
+            data: {
+                url: result.secure_url,
+                publicId: result.public_id,
+            },
+        });
+    } catch (error) {
+        logger.error(`Image upload failed: ${error.message}`);
+        res.status(500);
+        throw new Error(`Failed to upload image to Cloudinary: ${error.message}`);
+    }
 });
 
 module.exports = {
@@ -204,5 +231,10 @@ module.exports = {
     getBlog,
     updateBlog,
     deleteBlog,
-    uploadFeaturedImage,
+    uploadFeaturedImageStream,
 };
+
+
+
+
+

@@ -77,14 +77,8 @@ const BlogSchema = new mongoose.Schema(
             index: true,
         },
         featuredImage: {
-            url: {
-                type: String,
-                default: null,
-            },
-            publicId: {
-                type: String,
-                default: null,
-            },
+            type: String,
+            default: null,
         },
         readTime: {
             type: Number,

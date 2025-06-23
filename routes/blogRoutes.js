@@ -5,7 +5,7 @@ const {
     getBlog,
     updateBlog,
     deleteBlog,
-    uploadFeaturedImage,
+    uploadFeaturedImageStream,
 } = require("../controllers/blogController");
 const { protect, admin } = require("../middleware/authMiddleware");
 const { upload } = require("../middleware/uploadMiddleware");
@@ -19,9 +19,11 @@ router.put("/:id", protect, validateBlog, updateBlog);
 router.delete("/:id", protect, deleteBlog);
 router.post(
     "/upload-image",
-    protect,
-    upload.single("image"),
-    uploadFeaturedImage
+    // protect,
+    upload.single("file"),
+    uploadFeaturedImageStream
 );
 
 module.exports = router;
+
+

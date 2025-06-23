@@ -190,7 +190,9 @@ const connectDB = require('./config/database');
 const contactRoutes = require('./routes/contactRoutes');
 const blogRoutes = require('./routes/blogRoutes');
 const authRoutes = require('./routes/authRoutes');
+const categoryRoutes = require("./routes/categoryRoutes");
 const logger = require('./utils/logger');
+
 
 // Load all models to ensure they are registered with Mongoose
 require('./models/userModel');
@@ -257,7 +259,7 @@ app.use(generalLimiter);
 // CORS configuration
 app.use(cors({
     origin: process.env.NODE_ENV === 'production'
-        ? ['https://katchintech.com']
+        ? ['https://katchintech.com', 'https://katchinweb.vercel.app']
         : ['http://localhost:3000', 'http://localhost:3001'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true,
@@ -272,6 +274,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/api/contact', formLimiter, contactRoutes);
 app.use('/api/blogs', blogLimiter, blogRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/categories', categoryRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
