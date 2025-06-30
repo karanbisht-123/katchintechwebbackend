@@ -62,6 +62,14 @@ const validateBlog = [
         .isLength({ max: 160 })
         .withMessage("Meta description cannot exceed 160 characters"),
 
+    body("featuredImage")
+        .optional()
+        .trim()
+        .isURL()
+        .withMessage("Featured image must be a valid URL")
+        .isLength({ max: 1000 })
+        .withMessage("Featured image URL cannot exceed 1000 characters"),
+
     asyncHandler(async (req, res, next) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {

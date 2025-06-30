@@ -42,8 +42,6 @@ class EmailService {
     async sendNotificationEmail(contactData) {
         const { fullName, email, phoneNo, country, requirements, createdAt } =
             contactData;
-
-        // Validate input
         if (
             !fullName ||
             !email ||
