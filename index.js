@@ -18,6 +18,7 @@ dotenv.config();
 
 const app = express();
 connectDB();
+
 app.use(
     helmet({
         contentSecurityPolicy: {
@@ -31,6 +32,7 @@ app.use(
     })
 );
 
+// Log server config in dev mode
 if (process.env.NODE_ENV !== "production") {
     logger.info("Server configuration", {
         nodeEnv: process.env.NODE_ENV,
@@ -41,6 +43,7 @@ if (process.env.NODE_ENV !== "production") {
     });
 }
 
+// Rate Limiters
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
@@ -50,7 +53,7 @@ const generalLimiter = rateLimit({
 });
 
 const formLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
+    windowMs: 15 * 60 * 1000,
     max: 5,
     message: "Too many form submissions, please try again later.",
     standardHeaders: true,
@@ -105,6 +108,15 @@ app.use("*", (req, res) => {
 });
 
 app.use((err, req, res, next) => {
+    const statusCode =
+        res.statusCode && res.statusCode !== 200 ? res.statusCode : 500;
+
+    res.status(statusCode).json({
+        success: false,
+        message: err.message || "Something went wrong!",
+        stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
+    });
+
     if (process.env.NODE_ENV !== "production") {
         logger.error("Server error", {
             error: err.message,
@@ -113,22 +125,18 @@ app.use((err, req, res, next) => {
             method: req.method,
         });
     }
-
-    res.status(err.status || 500).json({
-        success: false,
-        message: "Something went wrong!",
-        error: process.env.NODE_ENV === "development" ? err.message : undefined,
-        stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
-    });
 });
 
 const PORT = process.env.PORT || 5000;
-
 app.listen(PORT, () => {
     if (process.env.NODE_ENV !== "production") {
-        logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV} mode`);
+        logger.info(
+            `Server running on port ${PORT} in ${process.env.NODE_ENV} mode`
+        );
     } else {
-        console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV} mode`);
+        console.log(
+            `Server running on port ${PORT} in ${process.env.NODE_ENV} mode`
+        );
     }
 });
 
