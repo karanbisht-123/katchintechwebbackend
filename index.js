@@ -32,7 +32,6 @@ app.use(
     })
 );
 
-// Log server config in dev mode
 if (process.env.NODE_ENV !== "production") {
     logger.info("Server configuration", {
         nodeEnv: process.env.NODE_ENV,
@@ -43,7 +42,6 @@ if (process.env.NODE_ENV !== "production") {
     });
 }
 
-// Rate Limiters
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
@@ -126,6 +124,7 @@ app.use((err, req, res, next) => {
         });
     }
 });
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

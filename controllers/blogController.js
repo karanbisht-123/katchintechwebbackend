@@ -287,14 +287,13 @@ const getBlogs = async (req, res) => {
 
         const {
             page = 1,
-            limit = 10,
+            limit = 9,
             search,
             status,
             category,
-            sortBy = "publishedAt",
+            sortBy = "createdAt",
             sortOrder = "desc",
         } = req.query;
-
 
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
@@ -330,7 +329,6 @@ const getBlogs = async (req, res) => {
             query.status = status;
         }
 
-
         if (category?.trim()) {
             const categoryQuery = validateObjectId(category)
                 ? { _id: category }
@@ -343,8 +341,7 @@ const getBlogs = async (req, res) => {
             query.categories = categoryDoc._id;
         }
 
-
-        const validSortFields = ["title", "publishedAt", "createdAt", "updatedAt"];
+        const validSortFields = ["title", "createdAt", "updatedAt"];
         const validSortOrders = ["asc", "desc"];
 
         if (!validSortFields.includes(sortBy)) {
@@ -363,10 +360,18 @@ const getBlogs = async (req, res) => {
 
         const sortObject = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
+        const skipCount = (pageNum - 1) * limitNum;
+        console.log('DEBUG PAGINATION:');
+        console.log('Page:', pageNum);
+        console.log('Limit:', limitNum);
+        console.log('Skip count:', skipCount);
+        console.log('Query:', JSON.stringify(query));
+
         logger.debug("Executing blog query", {
             query: JSON.stringify(query),
             page: pageNum,
             limit: limitNum,
+            skip: skipCount,
             sort: sortObject,
         });
 
@@ -379,11 +384,16 @@ const getBlogs = async (req, res) => {
                     options: { strictPopulate: false },
                 })
                 .sort(sortObject)
-                .skip((pageNum - 1) * limitNum)
+                .skip(skipCount)
                 .limit(limitNum)
                 .lean(),
             Blog.countDocuments(query),
         ]);
+
+        console.log('DEBUG RESULTS:');
+        console.log('Total documents found:', total);
+        console.log('Blogs returned:', blogs.length);
+        console.log('Blog IDs:', blogs.map(blog => blog._id));
 
         const totalPages = Math.ceil(total / limitNum);
 
@@ -392,6 +402,7 @@ const getBlogs = async (req, res) => {
             total,
             page: pageNum,
             totalPages,
+            skipCount,
             hasSearch: !!search,
             hasFilters: !!(status || category),
         });
@@ -412,6 +423,12 @@ const getBlogs = async (req, res) => {
                 status: status || null,
                 category: category || null,
             },
+
+            debug: {
+                skipCount,
+                queryUsed: query,
+                sortUsed: sortObject,
+            }
         });
     } catch (error) {
         handleErrorResponse(res, error, context);
@@ -659,6 +676,226 @@ const deleteBlog = async (req, res) => {
     }
 };
 
+
+
+const getBlogStats = async (req, res) => {
+
+
+    const context = {
+        operation: "getBlogStats",
+        userId: req.user?._id,
+        requestData: {},
+    };
+
+    try {
+        logger.debug("Fetching blog statistics");
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const endOfToday = new Date(startOfToday);
+        endOfToday.setDate(endOfToday.getDate() + 1);
+        const startOfWeek = new Date(now);
+        const dayOfWeek = startOfWeek.getDay();
+        startOfWeek.setDate(startOfWeek.getDate() - dayOfWeek);
+        startOfWeek.setHours(0, 0, 0, 0);
+        const [
+            totalBlogs,
+            publishedBlogs,
+            publishedToday,
+            publishedThisWeek,
+            draftBlogs
+        ] = await Promise.all([
+            Blog.countDocuments({}),
+
+
+            Blog.countDocuments({ status: 'published' }),
+
+            Blog.countDocuments({
+                status: 'published',
+                createdAt: {
+                    $gte: startOfToday,
+                    $lt: endOfToday
+                }
+            }),
+
+
+            Blog.countDocuments({
+                status: 'published',
+                createdAt: {
+                    $gte: startOfWeek,
+                    $lt: now
+                }
+            }),
+
+            Blog.countDocuments({ status: 'draft' })
+        ]);
+
+        const stats = {
+            total: totalBlogs,
+            published: publishedBlogs,
+            draft: draftBlogs,
+            publishedToday,
+            publishedThisWeek,
+            lastUpdated: new Date().toISOString()
+        };
+
+        logger.info("Blog statistics fetched successfully", stats);
+
+        res.json({
+            success: true,
+            data: stats,
+            message: "Blog statistics retrieved successfully"
+        });
+
+    } catch (error) {
+        handleErrorResponse(res, error, context);
+    }
+};
+
+
+const getDetailedBlogStats = async (req, res) => {
+    const context = {
+        operation: "getDetailedBlogStats",
+        userId: req.user?._id,
+        requestData: {},
+    };
+
+    try {
+        logger.debug("Fetching detailed blog statistics");
+
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const endOfToday = new Date(startOfToday);
+        endOfToday.setDate(endOfToday.getDate() + 1);
+
+        const startOfWeek = new Date(now);
+        const dayOfWeek = startOfWeek.getDay();
+        startOfWeek.setDate(startOfWeek.getDate() - dayOfWeek);
+        startOfWeek.setHours(0, 0, 0, 0);
+
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        const stats = await Blog.aggregate([
+            {
+                $facet: {
+
+                    statusCounts: [
+                        {
+                            $group: {
+                                _id: "$status",
+                                count: { $sum: 1 }
+                            }
+                        }
+                    ],
+
+
+                    publishedToday: [
+                        {
+                            $match: {
+                                status: "published",
+                                createdAt: {
+                                    $gte: startOfToday,
+                                    $lt: endOfToday
+                                }
+                            }
+                        },
+                        {
+                            $count: "count"
+                        }
+                    ],
+
+
+                    publishedThisWeek: [
+                        {
+                            $match: {
+                                status: "published",
+                                createdAt: {
+                                    $gte: startOfWeek,
+                                    $lt: now
+                                }
+                            }
+                        },
+                        {
+                            $count: "count"
+                        }
+                    ],
+
+                    publishedThisMonth: [
+                        {
+                            $match: {
+                                status: "published",
+                                createdAt: {
+                                    $gte: startOfMonth,
+                                    $lt: now
+                                }
+                            }
+                        },
+                        {
+                            $count: "count"
+                        }
+                    ],
+
+
+                    recentBlogs: [
+                        {
+                            $match: {
+                                status: "published"
+                            }
+                        },
+                        {
+                            $sort: { createdAt: -1 }
+                        },
+                        {
+                            $limit: 5
+                        },
+                        {
+                            $project: {
+                                title: 1,
+                                slug: 1,
+                                createdAt: 1,
+                                author: 1
+                            }
+                        }
+                    ]
+                }
+            }
+        ]);
+
+        const result = stats[0];
+        const statusCounts = result.statusCounts.reduce((acc, item) => {
+            acc[item._id] = item.count;
+            return acc;
+        }, {});
+
+        const formattedStats = {
+            total: Object.values(statusCounts).reduce((sum, count) => sum + count, 0),
+            published: statusCounts.published || 0,
+            draft: statusCounts.draft || 0,
+            archived: statusCounts.archived || 0,
+            publishedToday: result.publishedToday[0]?.count || 0,
+            publishedThisWeek: result.publishedThisWeek[0]?.count || 0,
+            publishedThisMonth: result.publishedThisMonth[0]?.count || 0,
+            recentBlogs: result.recentBlogs,
+            lastUpdated: new Date().toISOString()
+        };
+
+        logger.info("Detailed blog statistics fetched successfully", {
+            total: formattedStats.total,
+            published: formattedStats.published,
+            publishedToday: formattedStats.publishedToday,
+            publishedThisWeek: formattedStats.publishedThisWeek
+        });
+
+        res.json({
+            success: true,
+            data: formattedStats,
+            message: "Detailed blog statistics retrieved successfully"
+        });
+
+    } catch (error) {
+        handleErrorResponse(res, error, context);
+    }
+};
+
 const uploadFeaturedImageStream = async (req, res) => {
     const context = {
         operation: "uploadFeaturedImageStream",
@@ -767,5 +1004,7 @@ module.exports = {
     getBlog,
     updateBlog,
     deleteBlog,
+    getBlogStats,
+    getDetailedBlogStats,
     uploadFeaturedImageStream,
 };
