@@ -11,9 +11,9 @@ class EmailService {
         });
 
         this.transporter = nodemailer.createTransport({
-            host: process.env.EMAIL_HOST || "smtp.gmail.com",
-            port: parseInt(process.env.EMAIL_PORT) || 587,
-            secure: false,
+            host: process.env.EMAIL_HOST,
+            port: parseInt(process.env.EMAIL_PORT) || 465,
+            secure: parseInt(process.env.EMAIL_PORT) === 465,
             auth: {
                 user: process.env.EMAIL_USER,
                 pass: process.env.EMAIL_PASS,
@@ -293,7 +293,7 @@ KatchinTech Contact Management System
             <body>
                 <div class="container">
                     <div class="header">
-                        <h2>✅ Thank You for Contacting Us!</h2>
+                        <h2>Thank You for Contacting Us!</h2>
                     </div>
                     <div class="content">
                         <p>Dear ${fullName},</p>
@@ -314,12 +314,12 @@ KatchinTech Contact Management System
         const mailOptions = {
             from: `"KatchinTech" <${process.env.EMAIL_USER}>`,
             to: email,
-            subject: "✅ Thank you for contacting KatchinTech",
+            subject: " Thank you for contacting KatchinTech",
             html: htmlContent,
         };
 
         try {
-            await this.transporter.verify(); // Verify before sending
+            await this.transporter.verify();
             const result = await this.transporter.sendMail(mailOptions);
             console.log("Confirmation email sent successfully:", {
                 messageId: result.messageId,
